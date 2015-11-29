@@ -2,8 +2,8 @@ import numpy as np
 
 # read in text file
 textFile = open( 'The Innocents Abroad.txt', 'r' ).read( )
-characters = list( set( textFile ) )
-fileSize, characterCount = len( textFile ), len( characters )
+characters = { chr( x ) for x in range( 0, 256 ) }
+numberOfCharacters = 256
 characterToIndex = { character : index for index, character in enumerate( characters ) }
 indexToCharacter = { index : character for index, character in enumerate( characters ) }
 
@@ -11,24 +11,24 @@ indexToCharacter = { index : character for index, character in enumerate( charac
 hiddenLayerSize = 100
 timeSteps = 25
 learningRate = 1e-1
-inputToHiddenWeights = np.random.randn( hiddenLayerSize, characterCount ) * 0.01
+inputToHiddenWeights = np.random.randn( hiddenLayerSize, numberOfCharacters ) * 0.01
 hiddenToHiddenWeights = np.random.randn( hiddenLayerSize, hiddenLayerSize ) * 0.01
-hiddenToOutputWeights = np.random.randn( characterCount, hiddenLayerSize ) * 0.01
+hiddenToOutputWeights = np.random.randn( numberOfCharacters, hiddenLayerSize ) * 0.01
 hiddenBias = np.zeros( ( hiddenLayerSize, 1 ) )
-outputBias = np.zeros( ( characterCount, 1 ) )
+outputBias = np.zeros( ( numberOfCharacters, 1 ) )
 
 def lossFunction( inputs, targets, hprev ):
   """
-  inputs,targets are both list of integers.
-  hprev is Hx1 array of initial hidden state
-  returns the loss, gradients on model parameters, and last hidden state
+  Inputs: inputs ad targets are both list of integers;
+          hprev is an Hx1 array of the initial hidden state
+  Return: the loss, gradients on model parameters, and the last hidden state
   """
   inputOverTime, hiddenStates, outputOverTime, predictionsOverTime = { }, { }, { }, { }
   hiddenStates[ -1 ] = np.copy( hprev )
   loss = 0
   # forward pass
   for t in xrange( len( inputs ) ):
-    inputOverTime[ t ] = np.zeros( ( characterCount,1 ) ) # encode in 1-of-k representation
+    inputOverTime[ t ] = np.zeros( ( numberOfCharacters,1 ) ) # encode in 1-of-k representation
     inputOverTime[ t ][ inputs[ t ] ] = 1
     hiddenStates[ t ] = np.tanh( np.dot( inputToHiddenWeights, inputOverTime[ t ] ) + np.dot( hiddenToHiddenWeights, \
     hiddenStates[ t-1 ] ) + hiddenBias )
@@ -60,7 +60,7 @@ def sample( h, seed_ix, n ):
   sample a sequence of integers from the model 
   h is memory state, seed_ix is seed letter for first time step
   """
-  x = np.zeros( ( characterCount, 1 ) )
+  x = np.zeros( ( numberOfCharacters, 1 ) )
   x[ seed_ix ] = 1
   ixes = [ ]
   for t in xrange( n ):
@@ -68,8 +68,8 @@ def sample( h, seed_ix, n ):
     + hiddenBias )
     y = np.dot( hiddenToOutputWeights, h ) + outputBias
     p = np.exp( y ) / np.sum( np.exp( y ) )
-    ix = np.random.choice( range( characterCount ), p=  p.ravel( ) )
-    x = np.zeros( ( characterCount, 1 ) )
+    ix = np.random.choice( range( numberOfCharacters ), p = p.ravel( ) )
+    x = np.zeros( ( numberOfCharacters, 1 ) )
     x[ ix ] = 1
     ixes.append( ix )
   return ixes
@@ -78,11 +78,14 @@ totalIterations, fileIndex = 0, 0
 mWxh, mWhh, mWhy = np.zeros_like( inputToHiddenWeights ), np.zeros_like( hiddenToHiddenWeights ), \
 np.zeros_like( hiddenToOutputWeights )
 mbh, mby = np.zeros_like( hiddenBias ), np.zeros_like( outputBias ) # memory variables for Adagrad
-smooth_loss = -np.log( 1.0 / characterCount ) * timeSteps # loss at iteration 0
-while True:
+smooth_loss = -np.log( 1.0 / numberOfCharacters ) * timeSteps # loss at iteration 0
+lossPerEpoch = [ ]
+maxIterations = 150000
+while totalIterations < maxIterations:
   if fileIndex + timeSteps + 1 >= len( textFile ) or totalIterations == 0: 
     hprev = np.zeros( ( hiddenLayerSize, 1 ) ) # reset RNN memory
     fileIndex = 0 # go from start of data
+    lossPerEpoch.append( smooth_loss )
   inputs = [ characterToIndex[ ch ] for ch in textFile[ fileIndex : fileIndex + timeSteps ] ]
   targets = [ characterToIndex[ ch ] for ch in textFile[ fileIndex + 1 : fileIndex + timeSteps + 1 ] ]
 
@@ -95,14 +98,16 @@ while True:
   # forward seq_length characters through the net and fetch gradient
   loss, dWxh, dWhh, dWhy, dbh, dby, hprev = lossFunction(inputs, targets, hprev)
   smooth_loss = smooth_loss * 0.999 + loss * 0.001
+  
   if totalIterations % 100 == 0: print 'iter %d, loss: %f' % ( totalIterations, smooth_loss ) # print progress
   
   # perform parameter update with Adagrad
-  for param, dparam, mem in zip([ inputToHiddenWeights, hiddenToHiddenWeights, \
+  for param, dparam, memory in zip([ inputToHiddenWeights, hiddenToHiddenWeights, \
   hiddenToOutputWeights, hiddenBias, outputBias, ], [dWxh, dWhh, dWhy, dbh, dby], 
                                 [mWxh, mWhh, mWhy, mbh, mby]):
-    mem += dparam * dparam
-    param += -learningRate * dparam / np.sqrt( mem + 1e-8 ) # adagrad update
+    memory += dparam * dparam
+    param += -learningRate * dparam / np.sqrt( memory + 1e-8 ) # adagrad update
 
-  fileIndex += timeSteps # move data pointer
-  totalIterations += 1 # iteration counter
+  # move to next sequence of characters to read in
+  fileIndex += timeSteps
+  totalIterations += 1
