@@ -1,7 +1,7 @@
 import numpy as np
 
 # read in text file
-textFile = open( 'The Innocents Abroad.txt', 'r' ).read( )
+textFile = open( 'The_Innocents_Abroad.txt', 'r' ).read( )
 characters = { chr( x ) for x in range( 0, 256 ) }
 numberOfCharacters = 256
 characterToIndex = { character : index for index, character in enumerate( characters ) }
