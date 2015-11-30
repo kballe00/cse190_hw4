@@ -80,8 +80,9 @@ np.zeros_like( hiddenToOutputWeights )
 mbh, mby = np.zeros_like( hiddenBias ), np.zeros_like( outputBias ) # memory variables for Adagrad
 smooth_loss = -np.log( 1.0 / numberOfCharacters ) * timeSteps # loss at iteration 0
 lossPerEpoch = [ ]
-maxIterations = 150000
-while totalIterations < maxIterations:
+sampleOutput = [ ]
+maxEpochs = 5
+while len( sampleOutput ) < maxEpochs:
   if fileIndex + timeSteps + 1 >= len( textFile ) or totalIterations == 0: 
     hprev = np.zeros( ( hiddenLayerSize, 1 ) ) # reset RNN memory
     fileIndex = 0 # go from start of data
@@ -89,17 +90,16 @@ while totalIterations < maxIterations:
   inputs = [ characterToIndex[ ch ] for ch in textFile[ fileIndex : fileIndex + timeSteps ] ]
   targets = [ characterToIndex[ ch ] for ch in textFile[ fileIndex + 1 : fileIndex + timeSteps + 1 ] ]
 
-  # sample from the model now and then
-  if totalIterations % 100 == 0:
-    sample_ix = sample(hprev, inputs[0], 200)
+  # sample from the model after every epoch
+  if fileIndex == 0 and totalIterations > 1:
+    sample_ix = sample(hprev, inputs[ 0 ], 200)
     txt = ''.join( indexToCharacter[ ix ] for ix in sample_ix )
-    print '----\n %s \n----' % ( txt, )
-
+    sampleOutput.append( txt )
+    print 'iter %d, number of samples: %d' % ( totalIterations, len( sampleOutput ) )
+    
   # forward seq_length characters through the net and fetch gradient
   loss, dWxh, dWhh, dWhy, dbh, dby, hprev = lossFunction(inputs, targets, hprev)
   smooth_loss = smooth_loss * 0.999 + loss * 0.001
-  
-  if totalIterations % 100 == 0: print 'iter %d, loss: %f' % ( totalIterations, smooth_loss ) # print progress
   
   # perform parameter update with Adagrad
   for param, dparam, memory in zip([ inputToHiddenWeights, hiddenToHiddenWeights, \
