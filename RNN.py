@@ -26,6 +26,7 @@ def lossFunction( inputs, targets, hprev ):
   inputOverTime, hiddenStates, outputOverTime, predictionsOverTime = { }, { }, { }, { }
   hiddenStates[ -1 ] = np.copy( hprev )
   loss = 0
+  temperature = 1
   # forward pass
   for t in xrange( len( inputs ) ):
     inputOverTime[ t ] = np.zeros( ( numberOfCharacters,1 ) ) # encode in 1-of-k representation
@@ -33,7 +34,7 @@ def lossFunction( inputs, targets, hprev ):
     hiddenStates[ t ] = np.tanh( np.dot( inputToHiddenWeights, inputOverTime[ t ] ) + np.dot( hiddenToHiddenWeights, \
     hiddenStates[ t-1 ] ) + hiddenBias )
     outputOverTime[ t ] = np.dot( hiddenToOutputWeights, hiddenStates[ t ] ) + outputBias # unnormalized log probabilities for next chars
-    predictionsOverTime[ t ] = np.exp( outputOverTime[ t ]) / np.sum( np.exp( outputOverTime[ t ] ) ) # probabilities for next chars
+    predictionsOverTime[ t ] = (np.exp( outputOverTime[ t ]) / temperature) / np.sum( np.exp( outputOverTime[ t ] ) / temperature) # probabilities for next chars
     loss += -np.log( predictionsOverTime[ t ][ targets[ t ], 0 ] ) # softmax (cross-entropy loss)
   # backward pass: compute gradients going backwards
   dWxh, dWhh, dWhy = np.zeros_like( inputToHiddenWeights ), np.zeros_like( hiddenToHiddenWeights ), \
@@ -95,7 +96,8 @@ while len( sampleOutput ) < maxEpochs:
     sample_ix = sample(hprev, inputs[ 0 ], 200)
     txt = ''.join( indexToCharacter[ ix ] for ix in sample_ix )
     sampleOutput.append( txt )
-    print 'iter %d, number of samples: %d' % ( totalIterations, len( sampleOutput ) )
+    print '\niter %d, number of samples: %d \n' % ( totalIterations, len( sampleOutput ) )
+    print 'txt %d: %s' % (len( sampleOutput ),txt[0:99])
     
   # forward seq_length characters through the net and fetch gradient
   loss, dWxh, dWhh, dWhy, dbh, dby, hprev = lossFunction(inputs, targets, hprev)
