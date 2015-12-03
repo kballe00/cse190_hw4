@@ -118,7 +118,6 @@ while len( sampleOutput ) < maxEpochs:
     memory += dparam * dparam
     param += -learningRate * dparam / np.sqrt( memory + 1e-8 )
   
-  print loss
   # move to next sequence of characters to read in
   fileIndex += timeSteps
   totalIterations += 1
