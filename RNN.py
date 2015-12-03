@@ -17,14 +17,14 @@ hiddenToOutputWeights = np.random.randn( numberOfCharacters, hiddenLayerSize ) *
 hiddenBias = np.zeros( ( hiddenLayerSize, 1 ) )
 outputBias = np.zeros( ( numberOfCharacters, 1 ) )
 
-def lossFunction( inputs, targets, hprev ):
+def lossFunction( inputs, targets, previousHiddenState ):
   """
-  Inputs: inputs ad targets are both list of integers;
-          hprev is an Hx1 array of the initial hidden state
+  Inputs: inputs and targets are both lists of integers;
+          previousHiddenState is an Hx1 array of the initial hidden state
   Return: the loss, gradients on model parameters, and the last hidden state
   """
   inputOverTime, hiddenStates, outputOverTime, predictionsOverTime = { }, { }, { }, { }
-  hiddenStates[ -1 ] = np.copy( hprev )
+  hiddenStates[ -1 ] = np.copy( previousHiddenState )
   loss = 0
   temperature = 1
   # forward pass
@@ -43,73 +43,82 @@ def lossFunction( inputs, targets, hprev ):
   dhnext = np.zeros_like( hiddenStates[ 0 ] )
   for t in reversed( xrange( len( inputs ) ) ):
     dy = np.copy( predictionsOverTime[ t ] )
-    dy[ targets[ t ] ] -= 1 # backprop into y
+     # backprop into y
+    dy[ targets[ t ] ] -= 1
     dWhy += np.dot( dy, hiddenStates[ t ].T )
     dby += dy
-    dh = np.dot( hiddenToOutputWeights.T, dy ) + dhnext # backprop into h
-    dhraw = ( 1 - hiddenStates[ t ] * hiddenStates[ t ] ) * dh # backprop through tanh nonlinearity
+     # backprop into h
+    dh = np.dot( hiddenToOutputWeights.T, dy ) + dhnext
+    # tanh backprop
+    dhraw = ( 1 - hiddenStates[ t ] * hiddenStates[ t ] ) * dh
     dbh += dhraw
     dWxh += np.dot( dhraw, inputOverTime[ t ].T )
     dWhh += np.dot( dhraw, hiddenStates[ t - 1 ].T )
     dhnext = np.dot( hiddenToHiddenWeights.T, dhraw )
   for dparam in [ dWxh, dWhh, dWhy, dbh, dby ]:
-    np.clip(dparam, -5, 5, out=dparam) # clip to mitigate exploding gradients
+    # clip to mitigate "exploding" gradients
+    np.clip(dparam, -5, 5, out=dparam)
   return loss, dWxh, dWhh, dWhy, dbh, dby, hiddenStates[ len( inputs ) - 1 ]
 
-def sample( h, seed_ix, n ):
+def sampleFromFile( hiddenState, seedIndex, sampleLength ):
   """ 
-  sample a sequence of integers from the model 
-  h is memory state, seed_ix is seed letter for first time step
+  Samples a sequence of integers from the model
+  hiddenState is the memory state, seedIndex is seed letter for first time step
   """
   x = np.zeros( ( numberOfCharacters, 1 ) )
-  x[ seed_ix ] = 1
-  ixes = [ ]
-  for t in xrange( n ):
-    h = np.tanh( np.dot( inputToHiddenWeights, x ) + np.dot( hiddenToHiddenWeights, h ) \
+  x[ seedIndex ] = 1
+  indicies = [ ]
+  for t in xrange( sampleLength ):
+    hiddenState = np.tanh( np.dot( inputToHiddenWeights, x ) + np.dot( hiddenToHiddenWeights, hiddenState ) \
     + hiddenBias )
-    y = np.dot( hiddenToOutputWeights, h ) + outputBias
-    p = np.exp( y ) / np.sum( np.exp( y ) )
-    ix = np.random.choice( range( numberOfCharacters ), p = p.ravel( ) )
+    output = np.dot( hiddenToOutputWeights, hiddenState ) + outputBias
+    probabilites = np.exp( output ) / np.sum( np.exp( output ) )
+    index = np.random.choice( range( numberOfCharacters ), probabilities = probabilites.ravel( ) )
     x = np.zeros( ( numberOfCharacters, 1 ) )
-    x[ ix ] = 1
-    ixes.append( ix )
-  return ixes
+    x[ index ] = 1
+    indicies.append( index )
+  return indicies
 
 totalIterations, fileIndex = 0, 0
+ # memory variables for Adagrad
 mWxh, mWhh, mWhy = np.zeros_like( inputToHiddenWeights ), np.zeros_like( hiddenToHiddenWeights ), \
 np.zeros_like( hiddenToOutputWeights )
-mbh, mby = np.zeros_like( hiddenBias ), np.zeros_like( outputBias ) # memory variables for Adagrad
-smooth_loss = -np.log( 1.0 / numberOfCharacters ) * timeSteps # loss at iteration 0
+mbh, mby = np.zeros_like( hiddenBias ), np.zeros_like( outputBias )
+ # loss before first iteration
+smoothLoss = -np.log( 1.0 / numberOfCharacters ) * timeSteps
 lossPerEpoch = [ ]
 sampleOutput = [ ]
 maxEpochs = 5
 while len( sampleOutput ) < maxEpochs:
-  if fileIndex + timeSteps + 1 >= len( textFile ) or totalIterations == 0: 
-    hprev = np.zeros( ( hiddenLayerSize, 1 ) ) # reset RNN memory
-    fileIndex = 0 # go from start of data
-    lossPerEpoch.append( smooth_loss )
+  if fileIndex + timeSteps + 1 >= len( textFile ) or totalIterations == 0:
+    # reset RNN memory
+    previousHiddenState = np.zeros( ( hiddenLayerSize, 1 ) )
+    # go from start of data
+    fileIndex = 0
+    lossPerEpoch.append( smoothLoss )
   inputs = [ characterToIndex[ ch ] for ch in textFile[ fileIndex : fileIndex + timeSteps ] ]
   targets = [ characterToIndex[ ch ] for ch in textFile[ fileIndex + 1 : fileIndex + timeSteps + 1 ] ]
 
   # sample from the model after every epoch
   if fileIndex == 0 and totalIterations > 1:
-    sample_ix = sample(hprev, inputs[ 0 ], 200)
-    txt = ''.join( indexToCharacter[ ix ] for ix in sample_ix )
-    sampleOutput.append( txt )
+    sampleIndicies = sampleFromFile( previousHiddenState, inputs[ 0 ], 100 )
+    text = ''.join( indexToCharacter[ ix ] for ix in sampleIndicies )
+    sampleOutput.append( text )
     print '\niter %d, number of samples: %d \n' % ( totalIterations, len( sampleOutput ) )
-    print 'txt %d: %s' % (len( sampleOutput ),txt[0:99])
+    print 'txt %d: %s' % ( len( sampleOutput ), text[0:99] )
     
-  # forward seq_length characters through the net and fetch gradient
-  loss, dWxh, dWhh, dWhy, dbh, dby, hprev = lossFunction(inputs, targets, hprev)
-  smooth_loss = smooth_loss * 0.999 + loss * 0.001
+  # calculate gradients
+  loss, dWxh, dWhh, dWhy, dbh, dby, previousHiddenState = lossFunction( inputs, targets, previousHiddenState )
+  smoothLoss = smoothLoss * 0.999 + loss * 0.001
   
-  # perform parameter update with Adagrad
+  # Adagrad
   for param, dparam, memory in zip([ inputToHiddenWeights, hiddenToHiddenWeights, \
   hiddenToOutputWeights, hiddenBias, outputBias, ], [dWxh, dWhh, dWhy, dbh, dby], 
                                 [mWxh, mWhh, mWhy, mbh, mby]):
     memory += dparam * dparam
-    param += -learningRate * dparam / np.sqrt( memory + 1e-8 ) # adagrad update
-
+    param += -learningRate * dparam / np.sqrt( memory + 1e-8 )
+  
+  print loss
   # move to next sequence of characters to read in
   fileIndex += timeSteps
   totalIterations += 1
